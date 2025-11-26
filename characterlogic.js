@@ -9,13 +9,11 @@ const HAND_COLOR = "#b48145ff";
 const SWING_SPEED = 0.25;
 const RETURN_SPEED = 0.1;
 const SWING_COOLDOWN = 30;
-// Hình ảnh Gậy
 const stickImage = new Image();
-stickImage.src = "Sword_1.png";
+stickImage.src = "Sword_1.png"; 
 
 class Ball {
     constructor(x, y, r, color, isPlayer = false) {
-        // ... (Constructor giữ nguyên) ...
         this.pos = new Vector(x, y);
         this.vel = new Vector(0, 0);
         this.r = r;
@@ -23,35 +21,38 @@ class Ball {
         this.mass = r;
         this.isPlayer = isPlayer;
         this.flashTimer = 0;
-
-        // Stats
+        
+        // Stats chung cho cả Player và Zombie
         this.health = 100;
         this.maxHealth = 100;
+        
+        // Tài nguyên (chỉ Player dùng, nhưng để đây cũng không sao)
         this.wood = 0;
         this.stone = 0;
 
-        // Player Specifics
+        // Combat Stats (Cả Player và Zombie đều cần)
         this.baseAngle = 0;
         this.swingOffset = -Math.PI / 3;
         this.isSwinging = false;
         this.isReturning = false;
         this.swingTimer = 0;
         this.cooldownTimer = 0;
-        this.hitTargets = [];
+        this.hitTargets = []; 
     }
+
     update() {
         if (this.flashTimer > 0) this.flashTimer--;
 
+        // --- 1. LOGIC NGƯỜI CHƠI (PLAYER) ---
         if (this.isPlayer) {
-            // --- UI Update (ĐÃ SỬA ID) ---
+            // UI Update
             const hpEl = document.getElementById('health-bar');
-            // ID mới trong hotbar
-            const woodEl = document.getElementById('ui-wood-count');
+            const woodEl = document.getElementById('ui-wood-count'); 
             const stoneEl = document.getElementById('ui-stone-count');
-
-            if (hpEl) hpEl.style.width = (this.health / this.maxHealth * 100) + "%";
-            if (woodEl) woodEl.innerText = this.wood;
-            if (stoneEl) stoneEl.innerText = this.stone;
+            
+            if(hpEl) hpEl.style.width = (this.health / this.maxHealth * 100) + "%";
+            if(woodEl) woodEl.innerText = this.wood;
+            if(stoneEl) stoneEl.innerText = this.stone;
 
             // Move
             if (keys.w || keys.ArrowUp) this.vel.y -= ACCELERATION;
@@ -59,58 +60,88 @@ class Ball {
             if (keys.a || keys.ArrowLeft) this.vel.x -= ACCELERATION;
             if (keys.d || keys.ArrowRight) this.vel.x += ACCELERATION;
 
-            // Rotate
+            // Rotate theo chuột
             const mouseWorldX = mouse.x + camera.x;
             const mouseWorldY = mouse.y + camera.y;
             const dx = mouseWorldX - this.pos.x;
             const dy = mouseWorldY - this.pos.y;
             this.baseAngle = Math.atan2(dy, dx);
 
-            // Chỉ tấn công nếu Active Slot là 0 (Kiếm)
+            // Attack Input (Chuột trái)
             if (this.cooldownTimer > 0) this.cooldownTimer--;
-
-            if (activeSlot === 0 && mouse.isDown && !this.isSwinging && !this.isReturning && this.cooldownTimer === 0) {
+            
+            // Chỉ đánh được khi đang cầm kiếm (activeSlot === 0)
+            if (typeof activeSlot !== 'undefined' && activeSlot === 0 && mouse.isDown && !this.isSwinging && !this.isReturning && this.cooldownTimer === 0) {
                 this.isSwinging = true; this.swingTimer = 0; this.hitTargets = [];
             }
+        } 
+        // --- 2. LOGIC ZOMBIE (AI) ---
+        else if (player) { // Nếu không phải player thì là Zombie, và Player phải đang sống
+            // Tính toán khoảng cách tới Player
+            const dx = player.pos.x - this.pos.x;
+            const dy = player.pos.y - this.pos.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            
+            // Xoay mặt về phía Player
+            this.baseAngle = Math.atan2(dy, dx);
 
-            if (this.isSwinging) {
-                this.swingTimer += SWING_SPEED;
-                if (this.swingTimer >= Math.PI) { this.swingTimer = Math.PI; this.isSwinging = false; this.isReturning = true; }
-            } else if (this.isReturning) {
-                this.swingTimer -= RETURN_SPEED;
-                if (this.swingTimer <= 0) { this.swingTimer = 0; this.isReturning = false; this.cooldownTimer = SWING_COOLDOWN; }
+            // Di chuyển: Đuổi theo Player
+            // Chỉ đuổi nếu khoảng cách > 100 (để không bị dính chặt vào người chơi)
+            // Tốc độ chậm hơn Player một chút (ACCELERATION * 0.6) để Player có cơ hội chạy
+            if (dist > 80) {
+                const moveDir = new Vector(dx, dy).normalize();
+                this.vel = this.vel.add(moveDir.mult(ACCELERATION * 0.6));
             }
-            // Nếu không cầm kiếm thì giấu kiếm đi (hoặc giữ im)
-            if (activeSlot !== 0) {
-                this.swingOffset = -Math.PI / 3; // Giữ kiếm ở vị trí nghỉ
-            } else {
-                this.swingOffset = (this.isSwinging || this.isReturning) ? -Math.cos(this.swingTimer) * (Math.PI / 3) : -Math.PI / 3;
+
+            // Tấn công: Nếu đủ gần (< 180) và hồi chiêu xong thì chém
+            if (this.cooldownTimer > 0) this.cooldownTimer--;
+            
+            if (dist < 180 && !this.isSwinging && !this.isReturning && this.cooldownTimer === 0) {
+                this.isSwinging = true; 
+                this.swingTimer = 0; 
+                this.hitTargets = [];
             }
         }
 
-        // Vật lý
+        // --- 3. XỬ LÝ HOẠT ẢNH CHÉM (CHUNG CHO CẢ 2) ---
+        if (this.isSwinging) {
+            this.swingTimer += SWING_SPEED;
+            if (this.swingTimer >= Math.PI) { this.swingTimer = Math.PI; this.isSwinging = false; this.isReturning = true; }
+        } else if (this.isReturning) {
+            this.swingTimer -= RETURN_SPEED;
+            if (this.swingTimer <= 0) { this.swingTimer = 0; this.isReturning = false; this.cooldownTimer = SWING_COOLDOWN; }
+        }
+        
+        // Cập nhật góc kiếm
+        // Nếu là Player và đang cầm tường (Slot 1) thì giấu kiếm
+        if (this.isPlayer && typeof activeSlot !== 'undefined' && activeSlot !== 0) {
+            this.swingOffset = -Math.PI / 3;
+        } else {
+            this.swingOffset = (this.isSwinging || this.isReturning) ? -Math.cos(this.swingTimer) * (Math.PI / 3) : -Math.PI / 3;
+        }
+
+        // --- 4. VẬT LÝ CƠ BẢN ---
         this.pos = this.pos.add(this.vel);
         this.vel = this.vel.mult(FRICTION);
 
-        // Giới hạn bản đồ
+        // Map Boundaries
         if (this.pos.x + this.r > MAP_WIDTH) { this.pos.x = MAP_WIDTH - this.r; this.vel.x *= -ELASTICITY; }
         else if (this.pos.x - this.r < 0) { this.pos.x = this.r; this.vel.x *= -ELASTICITY; }
-
+        
         if (this.pos.y + this.r > MAP_HEIGHT) { this.pos.y = MAP_HEIGHT - this.r; this.vel.y *= -ELASTICITY; }
         else if (this.pos.y - this.r < 0) { this.pos.y = this.r; this.vel.y *= -ELASTICITY; }
     }
-    checkStickHit(target, type = "enemy") {
-        // Lưu ý: Chỉ đánh trúng nếu target còn active (đối với resource)
-        if (type === "resource" && !target.active) return;
 
+    checkStickHit(target, type = "enemy") {
+        if (type === "resource" && !target.active) return;
         if (!this.isSwinging || this.hitTargets.includes(target)) return;
 
         const currentStickAngle = this.baseAngle + this.swingOffset;
-        const dx = target.pos ? target.pos.x - this.pos.x : target.x + target.w / 2 - this.pos.x;
-        const dy = target.pos ? target.pos.y - this.pos.y : target.y + target.h / 2 - this.pos.y;
+        const dx = target.pos ? target.pos.x - this.pos.x : target.x + target.w/2 - this.pos.x;
+        const dy = target.pos ? target.pos.y - this.pos.y : target.y + target.h/2 - this.pos.y;
 
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const reach = STICK_LENGTH + this.r + (target.r || target.w / 2);
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const reach = STICK_LENGTH + this.r + (target.r || target.w/2);
 
         const angleToTarget = Math.atan2(dy, dx);
         let angleDiff = angleToTarget - currentStickAngle;
@@ -120,117 +151,78 @@ class Ball {
         if (dist < reach && Math.abs(angleDiff) < 1.0) {
             this.hitTargets.push(target);
             target.flashTimer = 5;
-            target.health -= 25;
+            
+            // Sát thương: Player đánh thì 25, Zombie đánh thì 10
+            const damage = this.isPlayer ? 25 : 10;
+            target.health -= damage; 
 
-            if (type === "resource") {
-                if (target.type === "wood") this.wood += 2;
-                if (target.type === "stone") this.stone += 1;
-            } else if (type === "enemy") {
+            if (type === "resource" && this.isPlayer) {
+                if (target.type === "wood") this.wood += 5;
+                if (target.type === "stone") this.stone += 3;
+            } else if (type === "enemy" || type === "player") {
                 const knockbackDir = new Vector(Math.cos(currentStickAngle), Math.sin(currentStickAngle));
                 target.vel = target.vel.add(knockbackDir.mult(KNOCKBACK_FORCE));
             }
         }
     }
+    
+    // checkWallHit giữ nguyên
     checkWallHit(wall) {
-        if (!this.isSwinging || this.hitTargets.includes(wall)) return;
-        const centerX = wall.x + wall.w / 2;
-        const centerY = wall.y + wall.h / 2;
-        const dist = Math.sqrt((centerX - this.pos.x) ** 2 + (centerY - this.pos.y) ** 2);
+         if (!this.isSwinging || this.hitTargets.includes(wall)) return;
+         const centerX = wall.x + wall.w/2;
+         const centerY = wall.y + wall.h/2;
+         const dist = Math.sqrt((centerX - this.pos.x)**2 + (centerY - this.pos.y)**2);
+         const currentStickAngle = this.baseAngle + this.swingOffset;
+         const angleToWall = Math.atan2(centerY - this.pos.y, centerX - this.pos.x);
+         let angleDiff = angleToWall - currentStickAngle;
+         while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+         while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
 
-        const currentStickAngle = this.baseAngle + this.swingOffset;
-        const angleToWall = Math.atan2(centerY - this.pos.y, centerX - this.pos.x);
-        let angleDiff = angleToWall - currentStickAngle;
-        while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-        while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
-
-        if (dist < STICK_LENGTH + this.r + 40 && Math.abs(angleDiff) < 1.0) {
-            this.hitTargets.push(wall);
-            wall.health -= 20;
-        }
+         if (dist < STICK_LENGTH + this.r + 40 && Math.abs(angleDiff) < 1.0) {
+             this.hitTargets.push(wall);
+             wall.health -= 20; 
+         }
     }
 
     draw() {
-        if (this.isPlayer) {
+        // --- VẼ KIẾM (CHO CẢ PLAYER VÀ ZOMBIE) ---
+        // Chỉ vẽ nếu không phải Player (Zombie luôn cầm kiếm) HOẶC là Player đang cầm kiếm (Slot 0)
+        const shouldDrawSword = !this.isPlayer || (this.isPlayer && activeSlot === 0);
+
+        if (shouldDrawSword) {
             ctx.save();
             ctx.translate(this.pos.x, this.pos.y);
             ctx.rotate(this.baseAngle + this.swingOffset);
-
-            // Vẽ kiếm (Chỉ vẽ nếu đang ở Slot 0)
-            if (activeSlot === 0) {
-                const startX = this.r - STICK_ANCHOR_POINT;
-                ctx.drawImage(stickImage, startX, STICK_ANCHOR_Y, STICK_LENGTH, STICK_WIDTH);
-            }
-
-            // Vẽ tay
+            
             const startX = this.r - STICK_ANCHOR_POINT;
+            ctx.drawImage(stickImage, startX, STICK_ANCHOR_Y, STICK_LENGTH, STICK_WIDTH);
+            
+            // Vẽ tay
             ctx.fillStyle = HAND_COLOR;
-            ctx.beginPath(); ctx.arc(startX + 15, 30, HAND_RADIUS, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(startX + 55, 30, HAND_RADIUS, 0, Math.PI * 2); ctx.fill();
-
+            ctx.beginPath(); ctx.arc(startX + 15, 30, HAND_RADIUS, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(startX + 55, 30, HAND_RADIUS, 0, Math.PI*2); ctx.fill();
+            
             ctx.restore();
         }
 
+        // Vẽ thân mình
         ctx.beginPath();
         ctx.arc(this.pos.x, this.pos.y, this.r, 0, Math.PI * 2);
+        
         if (this.flashTimer > 0) ctx.fillStyle = "#fff";
         else ctx.fillStyle = this.color;
-
+        
         ctx.fill();
         ctx.strokeStyle = "#333";
         ctx.stroke();
-    }
-}
 
-// --- PLAYER ACTIONS (BUILD) ---
-// Hàm này giờ được gọi khi click chuột
-function placeWallAt(x, y) {
-    // SIZE CŨ: 40 -> SIZE MỚI: 80 (Gấp 4 diện tích)
-    const size = 80; 
-    
-    if (player && player.wood >= 5) {
-        const exists = squares.some(s => s.x === x && s.y === y);
-        // Tăng khoảng cách xây dựng một chút vì tường to hơn
-        const dist = Math.sqrt((x + size/2 - player.pos.x)**2 + (y + size/2 - player.pos.y)**2);
-
-        if (!exists && dist < 250) { // Tăng tầm xây dựng lên 250
-            squares.push(new Square(x, y, size, size, "#666"));
-            player.wood -= 5;
+        // --- THANH MÁU CHO ZOMBIE ---
+        // Player có thanh máu UI riêng, còn Zombie cần thanh máu trên đầu
+        if (!this.isPlayer && this.health < this.maxHealth) {
+            ctx.fillStyle = "red";
+            ctx.fillRect(this.pos.x - 20, this.pos.y - this.r - 15, 40, 5);
+            ctx.fillStyle = "#00ff00";
+            ctx.fillRect(this.pos.x - 20, this.pos.y - this.r - 15, 40 * (this.health / this.maxHealth), 5);
         }
-    }
-}
-
-// ... (Giữ nguyên các hàm checkBallBall, checkBallSquare, checkBallResource) ...
-function checkBallBall(b1, b2) {
-    const diff = b1.pos.sub(b2.pos);
-    const distSq = diff.x*diff.x + diff.y*diff.y;
-    const minDist = b1.r + b2.r;
-    if (distSq < minDist*minDist) {
-        const dist = Math.sqrt(distSq) || 1;
-        const overlap = (minDist - dist) / 2;
-        const normal = diff.normalize();
-        b1.pos = b1.pos.add(normal.mult(overlap));
-        b2.pos = b2.pos.sub(normal.mult(overlap));
-    }
-}
-function checkBallSquare(ball, square) {
-    const closestX = Math.max(square.x, Math.min(ball.pos.x, square.x + square.w));
-    const closestY = Math.max(square.y, Math.min(ball.pos.y, square.y + square.h));
-    const distX = ball.pos.x - closestX;
-    const distY = ball.pos.y - closestY;
-    if (distX*distX + distY*distY < ball.r*ball.r) {
-        const dist = Math.sqrt(distX*distX + distY*distY);
-        const normal = dist === 0 ? new Vector(1,0) : new Vector(distX/dist, distY/dist);
-        ball.pos = ball.pos.add(normal.mult(ball.r - dist));
-    }
-}
-function checkBallResource(ball, res) {
-    if (!res.active) return;
-    const diff = ball.pos.sub(res.pos);
-    const distSq = diff.x*diff.x + diff.y*diff.y;
-    const minDist = ball.r + res.r;
-    if (distSq < minDist*minDist) {
-        const dist = Math.sqrt(distSq);
-        const normal = diff.normalize();
-        ball.pos = ball.pos.add(normal.mult(minDist - dist));
     }
 }
