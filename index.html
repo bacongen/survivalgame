@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Duc Anh IO Game</title>
+    <link rel="stylesheet" href="style.css">
+
+    <script src="globals.js" defer></script>
+    <script src="entitylogic.js" defer></script>
+    <script src="characterlogic.js" defer></script>
+    <script src="maplogic.js" defer></script>
+    <script src="main.js" defer></script>
+</head>
+
+<body>
+    <div id="ui-container">
+
+        <div id="controls-hint">
+            [Left Click]: Attack/Gather <br>
+            [E]: Build Wall (30 Wood)
+        </div>
+
+        <div id="bottom-ui">
+            <div id="health-bar-container">
+                <div id="health-bar"></div>
+            </div>
+
+            <div id="hotbar">
+                <div class="slot active">
+                    <span class="key-num">1</span>
+                    <img src="Sword_1.png" alt="Sword" style="width: 30px; height: 30px;">
+                </div>
+                <div class="slot">
+                    <span class="key-num">2</span>
+                    <div class="slot-icon" style="background: #666;"></div>
+                </div>
+                <div class="slot"><span class="key-num">3</span></div>
+                <div class="slot"><span class="key-num">4</span></div>
+                <div class="slot"><span class="key-num">5</span></div>
+                <div class="slot"><span class="key-num">6</span></div>
+                <div class="slot"><span class="key-num">7</span></div>
+
+                <div class="slot">
+                    <span class="key-num">8</span>
+                    <div class="res-icon">🌲</div>
+                    <span id="ui-wood-count" class="count">0</span>
+                </div>
+                <div class="slot">
+                    <span class="key-num">9</span>
+                    <div class="res-icon">🪨</div>
+                    <span id="ui-stone-count" class="count">0</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="minimap-container">
+            <canvas id="minimap" width="150" height="150"></canvas>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas" width="1400" height="800" tabindex="1"></canvas>
