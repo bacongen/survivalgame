@@ -8,11 +8,15 @@ let isGameOver = false;
 window.addEventListener('keydown', (e) => {
     if (e.key === '1') activeSlot = 0;
     if (e.key === '2') activeSlot = 1;
+    // E: bật/tắt chế độ xây tường
+    if ((e.key === 'e' || e.key === 'E') && !e.repeat) activeSlot = activeSlot === 1 ? 0 : 1;
 });
 
 // Xử lý Click chuột (Tấn công hoặc Xây)
-canvas.addEventListener('mousedown', () => {
+canvas.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return; // chỉ chuột trái
     mouse.isDown = true;
+    if (isGameOver) return;
     if (activeSlot === 1) {
         const size = 80;
         const worldX = mouse.x + camera.x;
@@ -22,13 +26,12 @@ canvas.addEventListener('mousedown', () => {
         placeWallAt(gridX, gridY);
     }
 });
-canvas.addEventListener('mouseup', () => mouse.isDown = false);
-
 // --- HELPER FUNCTIONS ---
 
 function placeWallAt(x, y) {
     if (!player) return;
-    if (player.wood < 5) return; // Không đủ gỗ
+    if (player.wood < WALL_COST) return; // Không đủ gỗ
+    if (x < 0 || y < 0 || x + 80 > MAP_WIDTH || y + 80 > MAP_HEIGHT) return; // Ngoài bản đồ
 
     const size = 80;
     const margin = 5;
@@ -58,8 +61,16 @@ function placeWallAt(x, y) {
     let distY = player.pos.y - closestY;
     if ((distX * distX + distY * distY) < (player.r * player.r)) return;
 
+    // Check trùng Zombie
+    for (let o of objects) {
+        if (o.isPlayer) continue;
+        let cx = Math.max(x, Math.min(o.pos.x, x + size));
+        let cy = Math.max(y, Math.min(o.pos.y, y + size));
+        if ((o.pos.x - cx) ** 2 + (o.pos.y - cy) ** 2 < o.r * o.r) return;
+    }
+
     // Xây dựng
-    player.wood -= 5;
+    player.wood -= WALL_COST;
     squares.push(new Square(x, y, size, size, "#8e44ad"));
 }
 
@@ -97,15 +108,32 @@ window.respawnPlayer = function() {
     const gameOverScreen = document.getElementById('game-over-screen');
     if (gameOverScreen) gameOverScreen.classList.add('hidden');
     
+    player.isSwinging = false;
+    player.isReturning = false;
+    player.swingTimer = 0;
+    mouse.isDown = false;
+
     isGameOver = false;
-    animate();
+    requestAnimationFrame(animate);
 };
 
 function updateHotbarUI() {
-    document.querySelectorAll('.slot').forEach(el => el.classList.remove('active'));
-    const slotEl = document.querySelector(`.slot:nth-child(${activeSlot + 1})`);
-    if (slotEl) slotEl.classList.add('active');
+    document.querySelectorAll('#hotbar .slot').forEach((el, i) => el.classList.toggle('active', i === activeSlot));
 }
+
+// Sinh zombie ở xa người chơi để không bị tấn công ngay khi vào game
+function spawnZombie() {
+    let x, y, tries = 0;
+    do {
+        x = Math.random() * (MAP_WIDTH - 200) + 100;
+        y = Math.random() * (MAP_HEIGHT - 200) + 100;
+        tries++;
+    } while (player && Math.hypot(x - player.pos.x, y - player.pos.y) < 700 && tries < 50);
+    objects.push(new Ball(x, y, 25, "#FF4136"));
+}
+const MAX_ZOMBIES = 15;
+const ZOMBIE_RESPAWN_MS = 5000;
+let lastZombieSpawn = Date.now();
 
 function drawMinimap() {
     const mmCanvas = document.getElementById('minimap');
@@ -143,9 +171,7 @@ function init() {
     initMap(); 
     player = new Ball(MAP_WIDTH/2, MAP_HEIGHT/2, 25, "#d3a46cff", true); 
     objects.push(player);
-    for (let i = 0; i < 15; i++) {
-        objects.push(new Ball(Math.random()*MAP_WIDTH, Math.random()*MAP_HEIGHT, 25, "#FF4136"));
-    }
+    for (let i = 0; i < MAX_ZOMBIES; i++) spawnZombie();
 }
 
 function animate() {
@@ -170,14 +196,13 @@ function animate() {
     ctx.lineWidth = 10;
     ctx.strokeRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
 
-    squares.forEach((s, index) => {
-        s.draw();
-        if(s.health <= 0) squares.splice(index, 1);
-    });
+    // Xóa tường bị phá (lọc mảng thay vì splice trong forEach để không bỏ sót phần tử)
+    squares = squares.filter(s => s.health > 0);
+    squares.forEach(s => s.draw());
     resources.forEach((r) => { r.update(); r.draw(); });
 
     // 3. Draw & Update Objects (Player & Zombies)
-    objects.forEach((obj, index) => {
+    objects.forEach(obj => {
         obj.update();
         obj.draw();
 
@@ -186,18 +211,23 @@ function animate() {
             obj.checkStickHit(player, "player"); // Zombie đánh Player
             squares.forEach(wall => obj.checkWallHit(wall)); // Zombie đánh tường
         }
-        
-        // Kiểm tra chết
-        if (obj.health <= 0) {
-            if (obj.isPlayer) {
-                isGameOver = true;
-                const gameOverScreen = document.getElementById('game-over-screen');
-                if (gameOverScreen) gameOverScreen.classList.remove('hidden');
-            } else {
-                objects.splice(index, 1);
-            }
-        }
     });
+
+    // Kiểm tra chết (sau khi duyệt xong mới xóa)
+    if (player && player.health <= 0) {
+        player.health = 0;
+        isGameOver = true;
+        const gameOverScreen = document.getElementById('game-over-screen');
+        if (gameOverScreen) gameOverScreen.classList.remove('hidden');
+    }
+    objects = objects.filter(o => o.isPlayer || o.health > 0);
+
+    // Hồi sinh zombie dần dần để game không bị trống
+    const zombieCount = objects.length - 1;
+    if (zombieCount < MAX_ZOMBIES && Date.now() - lastZombieSpawn > ZOMBIE_RESPAWN_MS) {
+        spawnZombie();
+        lastZombieSpawn = Date.now();
+    }
 
     if(player) {
         resources.forEach(res => player.checkStickHit(res, "resource"));
@@ -211,7 +241,7 @@ function animate() {
         const worldY = mouse.y + camera.y;
         const gridX = Math.floor(worldX / size) * size;
         const gridY = Math.floor(worldY / size) * size;
-        const canBuild = player.wood >= 5; // Lưu ý: Code gốc là 30 hay 5? Logic trên là 5.
+        const canBuild = player.wood >= WALL_COST;
         
         ctx.globalAlpha = 0.5;
         ctx.fillStyle = canBuild ? "#00ff00" : "#ff0000"; 
@@ -232,7 +262,7 @@ function animate() {
     objects.forEach(obj => squares.forEach(sq => checkBallSquare(obj, sq)));
     objects.forEach(obj => resources.forEach(res => checkBallResource(obj, res)));
 
-    requestAnimationFrame(animate);
+    if (!isGameOver) requestAnimationFrame(animate);
 }
 
 // Start Game

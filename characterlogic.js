@@ -195,7 +195,16 @@ class Ball {
             ctx.rotate(this.baseAngle + this.swingOffset);
             
             const startX = this.r - STICK_ANCHOR_POINT;
-            ctx.drawImage(stickImage, startX, STICK_ANCHOR_Y, STICK_LENGTH, STICK_WIDTH);
+            // Chỉ vẽ ảnh khi đã tải xong; ảnh lỗi/chưa tải thì vẽ kiếm đơn giản thay thế
+            // (drawImage với ảnh lỗi sẽ làm crash cả vòng lặp game)
+            if (stickImage.complete && stickImage.naturalWidth > 0) {
+                ctx.drawImage(stickImage, startX, STICK_ANCHOR_Y, STICK_LENGTH, STICK_WIDTH);
+            } else {
+                ctx.fillStyle = "#bdc3c7";
+                ctx.fillRect(startX, STICK_ANCHOR_Y + 22, STICK_LENGTH, 16);
+                ctx.strokeStyle = "#333"; ctx.lineWidth = 2;
+                ctx.strokeRect(startX, STICK_ANCHOR_Y + 22, STICK_LENGTH, 16);
+            }
             
             // Vẽ tay
             ctx.fillStyle = HAND_COLOR;
@@ -214,6 +223,7 @@ class Ball {
         
         ctx.fill();
         ctx.strokeStyle = "#333";
+        ctx.lineWidth = 2;
         ctx.stroke();
 
         // --- THANH MÁU CHO ZOMBIE ---

@@ -4,9 +4,18 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// Kích thước màn hình (Viewport)
-const WIDTH = canvas.width;
-const HEIGHT = canvas.height;
+// Kích thước màn hình (Viewport) - tự co giãn theo cửa sổ trình duyệt
+let WIDTH = window.innerWidth;
+let HEIGHT = window.innerHeight;
+function resizeCanvas() {
+    WIDTH = canvas.width = window.innerWidth;
+    HEIGHT = canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// Giá trị gỗ để xây 1 bức tường
+const WALL_COST = 5;
 
 // Kích thước bản đồ (Map) - PHẢI CÓ
 const MAP_WIDTH = 4000;
@@ -63,8 +72,13 @@ canvas.addEventListener('mousemove', (e) => {
     mouse.x = e.clientX - rect.left;
     mouse.y = e.clientY - rect.top;
 });
-canvas.addEventListener('mousedown', () => mouse.isDown = true);
-canvas.addEventListener('mouseup', () => mouse.isDown = false);
+// Nhả chuột ở bất kỳ đâu (kể cả ngoài canvas) đều dừng tấn công
+window.addEventListener('mouseup', () => mouse.isDown = false);
+// Mất focus cửa sổ thì nhả hết phím, tránh nhân vật tự chạy mãi
+window.addEventListener('blur', () => {
+    for (const k in keys) keys[k] = false;
+    mouse.isDown = false;
+});
 
 // 5. PHYSICS FUNCTIONS (Xử lý va chạm)
 
